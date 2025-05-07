@@ -6,7 +6,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -15,16 +14,18 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  name          String?
-  password      String
-  role          Role      @default(AUTHOR)
-  profileImage  String?
-  bio           String?
-  posts         Post[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String         @id @default(uuid())
+  email        String         @unique
+  name         String?
+  password     String
+  role         Role           @default(AUTHOR)
+  profileImage String?
+  bio          String?
+  posts        Post[]
+  refreshToken String?
+  RevokedToken RevokedToken[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   @@index([name, email])
 }
@@ -35,31 +36,31 @@ enum Role {
 }
 
 model Category {
-  id          String    @id @default(uuid())
-  name        String    @unique
-  slug        String    @unique
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
   description String?
   posts       Post[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Post {
-  id          String      @id @default(uuid())
-  title       String
-  searchableName String @default("")
-  slug        String      @unique
-  content     String
-  published   Boolean     @default(false)
-  featuredImage String?
-  author      User        @relation(fields: [authorId], references: [id])
-  authorId    String
-  category    Category    @relation(fields: [categoryId], references: [id])
-  categoryId  String
-  tags        TagsOnPosts[]
-  comments    Comment[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id             String        @id @default(uuid())
+  title          String
+  searchableName String        @default("")
+  slug           String        @unique
+  content        String
+  published      Boolean       @default(false)
+  featuredImage  String?
+  author         User          @relation(fields: [authorId], references: [id])
+  authorId       String
+  category       Category      @relation(fields: [categoryId], references: [id])
+  categoryId     String
+  tags           TagsOnPosts[]
+  comments       Comment[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([title, slug])
 }
@@ -86,18 +87,27 @@ model TagsOnPosts {
 }
 
 model Comment {
-  id           String    @id @default(uuid())
-  content      String
-  post         Post      @relation(fields: [postId], references: [id])
-  postId       String
-  
+  id      String @id @default(uuid())
+  content String
+  post    Post   @relation(fields: [postId], references: [id])
+  postId  String
+
   // Champs pour les visiteurs
   visitorName  String
   visitorEmail String
-  
+
   // Champ pour la modération (approuvé par défaut)
-  isApproved   Boolean   @default(true)
-  
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  isApproved Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RevokedToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  expiresAt DateTime
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
 }

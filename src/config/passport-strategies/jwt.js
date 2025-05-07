@@ -1,16 +1,26 @@
 const passport = require("passport");
 const { Strategy, ExtractJwt } = require("passport-jwt");
 const { prisma } = require("../../lib/prisma");
+const jwt = require("jsonwebtoken");
 
-const opts = {
+// Options pour le access token
+const accessTokenOpts = {
   jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-  secretOrKey: process.env.JWT_SECRET,
+  secretOrKey: process.env.JWT_ACCESS_SECRET,
+};
+
+// Options pour le refresh token
+const refreshTokenOpts = {
+  jwtFromRequest: ExtractJwt.fromExtractors([
+    (req) => req.cookies?.refreshToken,
+  ]),
+  secretOrKey: process.env.JWT_REFRESH_SECRET,
 };
 
 passport.use(
-  new Strategy(opts, async (jwt_payload, done) => {
+  new Strategy(accessTokenOpts, async (jwt_payload, done) => {
     try {
-      const user = prisma.user.findUnique({
+      const user = await prisma.user.findUnique({
         where: {
           email: jwt_payload.email,
         },
