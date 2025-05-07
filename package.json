@@ -12,6 +12,7 @@
   "author": "Joe-Itax <josephitakala18@gmail.com>",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^6.7.0",
     "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -28,7 +29,7 @@
     "nodemon": "^3.1.10",
     "prisma": "^6.7.0"
   },
-   "resolutions": {
+  "resolutions": {
     "debug": "^4.3.1"
   }
 }
