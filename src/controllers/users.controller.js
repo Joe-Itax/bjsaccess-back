@@ -331,6 +331,25 @@ const usersController = {
     if (Object.keys(dataToUpdate).length === 0) {
       return res.status(400).json({ message: "Aucun champ à mettre à jour." });
     }
+
+    // Vérifie si l'utilisateur connecté est autorisé à modifier cette cible
+    const isSelf = req.user.id === userId;
+    const isAdmin = req.user.role === "ADMIN";
+
+    if (!isSelf && !isAdmin) {
+      return res.status(403).json({
+        message:
+          "Accès refusé. Vous ne pouvez modifier que votre propre compte.",
+      });
+    }
+
+    // Si un non-admin tente de modifier le rôle : interdit
+    if (!isAdmin && rest.role !== undefined) {
+      return res.status(403).json({
+        message: "Seul un administrateur peut modifier le rôle.",
+      });
+    }
+
     try {
       const { updatedUser } = await prisma.$transaction(async (tx) => {
         const existingUser = await tx.user.findUnique({
@@ -376,8 +395,16 @@ const usersController = {
         });
       }
 
+      if (error.message === "Utilisateur non trouvé.") {
+        return res.status(404).json({
+          message: error.message,
+        });
+      }
+
       return res.status(500).json({
-        message: "Erreur serveur lors de la mise à jour de l'utilisateur.",
+        message:
+          error.message ||
+          "Erreur serveur lors de la mise à jour de l'utilisateur.",
       });
     }
   },
@@ -392,10 +419,10 @@ const usersController = {
         });
 
         if (!existingUser) {
-          throw new Error("Utilisateur non trouvé.");
+          throw new Error("Utilisateur non trouvé.", { status: 404 });
         }
 
-        const deletedUser = await tx.prisma.delete({
+        const deletedUser = await tx.user.delete({
           where: { id: userId },
           select: {
             name: true,
@@ -407,10 +434,15 @@ const usersController = {
       });
 
       return res.status(200).json({
-        message: `L'utilisateur ${deletedUser.name}-${deletedUser.role} a été supprimé.`,
+        message: `L'utilisateur '${deletedUser.name}-${deletedUser.role}' a été supprimé.`,
       });
     } catch (error) {
       next(error);
+      if (error.message === "Utilisateur non trouvé.") {
+        return res.status(404).json({
+          message: error.message || "Erreur.",
+        });
+      }
       return res.status(500).json({
         message: "Erreur serveur.",
         details:

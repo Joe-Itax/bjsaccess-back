@@ -1,7 +1,10 @@
 const { Router } = require("express");
 const postsRouter = Router();
 const postsController = require("../controllers/posts.controller");
-const authenticate = require("../middlewares/authenticate.middleware");
+const {
+  authenticate,
+  attachTokenRefreshToResponse,
+} = require("../middlewares/index.middleware");
 const { check } = require("express-validator");
 
 // Validation commune
@@ -19,15 +22,27 @@ postsRouter.get("/category/:categorySlug", postsController.getPostsByCategory);
 postsRouter.get("/tag/:tagSlug", postsController.getPostsByTag);
 
 // Routes protégées
-postsRouter.post("/", authenticate, postValidation, postsController.createPost);
+postsRouter.post(
+  "/",
+  authenticate(),
+  attachTokenRefreshToResponse,
+  postValidation,
+  postsController.createPost
+);
 
 postsRouter.put(
   "/:id",
-  authenticate,
+  authenticate(),
+  attachTokenRefreshToResponse,
   postValidation,
   postsController.updatePost
 );
 
-postsRouter.delete("/:id", authenticate, postsController.deletePost);
+postsRouter.delete(
+  "/:id",
+  authenticate(),
+  attachTokenRefreshToResponse,
+  postsController.deletePost
+);
 
 module.exports = postsRouter;

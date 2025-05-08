@@ -1,12 +1,22 @@
 const { Router } = require("express");
-const authenticate = require("../middlewares/authenticate.middleware");
+const { authenticate, attachTokenRefreshToResponse } = require("../middlewares/index.middleware");
 const { authController } = require("../controllers/index.controller");
+
 const authRouter = Router();
 
-authRouter.post("/signup", authController.signup);
+authRouter.get(
+  "/check-auth",
+  authenticate(),
+  attachTokenRefreshToResponse,
+  authController.checkAuth
+);
 authRouter.post("/login", authController.login);
-authRouter.post("/refresh-token", authController.refreshToken);
-authRouter.post("/logout", authenticate, authController.logout);
-authRouter.get("/check-auth", authenticate, authController.checkAuth);
+authRouter.post("/logout", authenticate(), authController.logout);
+authRouter.post(
+  "/refresh-token",
+  authenticate(),
+  attachTokenRefreshToResponse,
+  authController.refreshToken
+);
 
 module.exports = authRouter;

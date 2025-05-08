@@ -1,5 +1,8 @@
+const auth = require("./authenticate.middleware");
+
 module.exports = {
-  authenticate: require("./authenticate.middleware"),
+  authenticate: auth.authenticate,
+  attachTokenRefreshToResponse: auth.attachTokenRefreshToResponse,
   corsLogger: require("./cors-logger.middleware"),
   prismaErrorHandler: require("./prisma-error-handler.middleware"),
   role: require("./role.middleware"),

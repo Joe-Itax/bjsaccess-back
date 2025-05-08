@@ -8,121 +8,6 @@ const passwordValid = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
 const validRoles = ["AUTHOR", "ADMIN"];
 
 const authController = {
-  // Création de compte
-  signup: async (req, res, next) => {
-    const {
-      email,
-      password = process.env.DEFAULT_PASSWORD_USER,
-      name,
-      role = "AUTHOR",
-      ...extraFields
-    } = req.body;
-
-    // Validation des champs
-    if (Object.keys(extraFields).length > 0) {
-      return res.status(400).json({
-        message: "Seuls 'email', 'password', 'name' & 'role' sont autorisés.",
-      });
-    }
-
-    // Validation des valeurs
-    if (!email || !name) {
-      return res.status(400).json({
-        message:
-          "Tous les champs obligatoires (email & name) doivent être fournis.",
-      });
-    }
-
-    // Validation des types
-    const validationErrors = [];
-    if (typeof name !== "string") validationErrors.push("Nom invalide");
-    if (typeof email !== "string") validationErrors.push("Email invalide");
-    if (typeof password !== "string")
-      validationErrors.push("Mot de passe invalide");
-    if (typeof role !== "string") validationErrors.push("Rôle invalide");
-
-    if (validationErrors.length > 0) {
-      return res.status(400).json({
-        message: "Erreurs de validation",
-        errors: validationErrors,
-      });
-    }
-
-    if (!validRoles.includes(role)) {
-      return res.status(400).json({ message: "Rôle invalide." });
-    }
-
-    if (!emailValid.test(email)) {
-      return res.status(400).json({ message: "Email invalide." });
-    }
-
-    if (!passwordValid.test(password)) {
-      return res.status(400).json({
-        message:
-          "Mot de passe invalide. 8+ caractères, majuscule, minuscule, chiffre, symbole.",
-      });
-    }
-
-    try {
-      const user = await prisma.$transaction(async (tx) => {
-        // Vérifier si l'utilisateur existe déjà
-        const existingUser = await tx.user.findUnique({
-          where: { email },
-        });
-
-        if (existingUser) {
-          throw new Error("Un compte avec cet email existe déjà");
-        }
-
-        // Hasher le mot de passe
-        const hashedPassword = await hashValue(password);
-
-        // Créer l'utilisateur
-        const newUser = await tx.user.create({
-          data: {
-            email,
-            password: hashedPassword,
-            name,
-          },
-        });
-
-        // Générer les tokens
-        const accessToken = generateAccessToken(newUser);
-        const refreshToken = generateRefreshToken(newUser);
-
-        // Mettre à jour l'utilisateur avec le refresh token
-        await tx.user.update({
-          where: { id: newUser.id },
-          data: { refreshToken },
-        });
-
-        return { newUser, refreshToken, accessToken };
-      });
-
-      const userResponse = {
-        id: user.newUser.id,
-        email: user.newUser.email,
-        name: user.newUser.name,
-        role: user.newUser.role,
-        profileImage: user.newUser.profileImage,
-        bio: user.newUser.bio,
-        createdAt: user.newUser.createdAt,
-        updatedAt: user.newUser.updatedAt,
-      };
-
-      // Renvoyer la réponse
-      res.status(201).json({
-        accessToken: user.accessToken,
-        refreshToken: user.refreshToken,
-        user: userResponse,
-      });
-    } catch (error) {
-      next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur lors de la création.",
-      });
-    }
-  },
 
   // Login avec email et mot de passe
   login: async (req, res, next) => {
@@ -160,6 +45,22 @@ const authController = {
     }
 
     try {
+      const oldToken = req.headers.authorization?.split(" ")[1];
+      if (oldToken) {
+        const decoded = jwt.decode(oldToken);
+        if (decoded?.exp && decoded?.id) {
+          await prisma.revokedToken.upsert({
+            where: { token: oldToken },
+            update: {},
+            create: {
+              token: oldToken,
+              expiresAt: new Date(decoded.exp * 1000),
+              userId: decoded.id,
+            },
+          });
+        }
+      }
+
       const { user, refreshToken, accessToken } = await prisma.$transaction(
         async (tx) => {
           // 1. Vérification de l'existence de l'utilisateur

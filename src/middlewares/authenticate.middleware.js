@@ -1,29 +1,3 @@
-// const passport = require("passport");
-// const { ExtractJwt } = require("passport-jwt");
-// const { prisma } = require("../lib/prisma");
-
-// function authenticate(req, res, next) {
-//   passport.authenticate("jwt", { session: false }, async (err, user, info) => {
-//     if (err) return next(err);
-//     if (!user) return res.status(401).json({ message: "Non authentifié" });
-
-//     // Vérifier si le token est révoqué
-//     const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
-//     const revoked = await prisma.revokedToken.findUnique({
-//       where: { token },
-//     });
-
-//     if (revoked) {
-//       return res.status(401).json({ message: "Token révoqué" });
-//     }
-
-//     req.user = user;
-//     next();
-//   })(req, res, next);
-// }
-
-// module.exports = authenticate;
-
 const passport = require("passport");
 const { ExtractJwt } = require("passport-jwt");
 const { prisma } = require("../lib/prisma");
@@ -36,35 +10,29 @@ function authenticate() {
       "jwt",
       { session: false },
       async (err, user, info) => {
-        // 1. Gestion des erreurs de base
         if (err) return next(err);
 
         const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
 
         try {
-          // 2. Vérifier si le token est révoqué
           const revoked = await prisma.revokedToken.findUnique({
             where: { token },
           });
           if (revoked)
             return res.status(401).json({ message: "Token révoqué" });
 
-          // 3. Deux stratégies selon si le JWT est valide ou expiré
           if (user) {
-            // Cas 1: Token encore valide
             const decoded = jwt.decode(token);
             const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
 
-            // Rafraîchissement proactif si expiration imminente
             if (expiresIn < 300) {
-              await handleTokenRefresh(user, res);
+              await attachTokenRefresh(user, res);
             }
 
             req.user = user;
             return next();
           } else if (info && info.name === "TokenExpiredError") {
-            // Cas 2: Token expiré mais refresh possible
-            return handleExpiredToken(req, res, next);
+            return tryAttachExpiredToken(req, res, next);
           }
 
           return res.status(401).json({ message: "Non authentifié" });
@@ -76,8 +44,7 @@ function authenticate() {
   };
 }
 
-// Gestion du rafraîchissement proactif
-async function handleTokenRefresh(user, res) {
+async function attachTokenRefresh(user, res) {
   const validUser = await prisma.user.findUnique({
     where: { id: user.id },
     select: { refreshToken: true },
@@ -85,22 +52,14 @@ async function handleTokenRefresh(user, res) {
 
   if (validUser?.refreshToken) {
     const newAccessToken = generateAccessToken(user);
-
-    const originalJson = res.json;
-    res.json = function (data) {
-      return originalJson.call(this, {
-        ...data,
-        tokenRefresh: {
-          newAccessToken,
-          expiresIn: 15 * 60,
-        },
-      });
+    res.locals.tokenRefresh = {
+      newAccessToken,
+      expiresIn: 15 * 60,
     };
   }
 }
 
-// Gestion des tokens expirés
-async function handleExpiredToken(req, res, next) {
+async function tryAttachExpiredToken(req, res, next) {
   const refreshToken = req.headers["x-refresh-token"] || req.body.refreshToken;
 
   if (!refreshToken) {
@@ -111,30 +70,17 @@ async function handleExpiredToken(req, res, next) {
   }
 
   try {
-    // Vérification du refresh token
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     const user = await prisma.user.findUnique({
-      where: {
-        id: decoded.id,
-        refreshToken: refreshToken, // Vérifie qu'il correspond bien à celui en DB
-      },
+      where: { id: decoded.id, refreshToken: refreshToken },
     });
 
     if (!user) throw new Error("Refresh token invalide");
 
-    // Génération d'un nouveau token
     const newAccessToken = generateAccessToken(user);
-
-    // Modification de la réponse
-    const originalJson = res.json;
-    res.json = function (data) {
-      return originalJson.call(this, {
-        ...data,
-        tokenRefresh: {
-          newAccessToken,
-          expiresIn: 15 * 60,
-        },
-      });
+    res.locals.tokenRefresh = {
+      newAccessToken,
+      expiresIn: 15 * 60,
     };
 
     req.user = user;
@@ -147,4 +93,18 @@ async function handleExpiredToken(req, res, next) {
   }
 }
 
-module.exports = authenticate;
+function attachTokenRefreshToResponse(req, res, next) {
+  const originalJson = res.json;
+  res.json = function (data) {
+    if (res.locals.tokenRefresh) {
+      data.tokenRefresh = res.locals.tokenRefresh;
+    }
+    return originalJson.call(this, data);
+  };
+  next();
+}
+
+module.exports = {
+  authenticate,
+  attachTokenRefreshToResponse,
+};
