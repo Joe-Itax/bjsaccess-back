@@ -16,12 +16,16 @@ async function generateUniqueSlug(title, model) {
 }
 
 const postsController = {
+  /* ====================== */
+  /* === GESTION DES POSTS === */
+  /* ====================== */
   // Créer un nouvel article
   createPost: async (req, res, next) => {
     const {
       title,
       content,
       categoryId,
+      authorId,
       tags = [],
       featuredImage,
       ...extraFields
@@ -30,16 +34,13 @@ const postsController = {
     // Rejet des champs supplémentaires
     if (Object.keys(extraFields).length > 0) {
       return res.status(400).json({
-        success: false,
-        message: `Champs non autorisés détectés ${Object.keys(extraFields)}`,
-        rejectedFields: Object.keys(extraFields),
+        message: `Champs non autorisés détectés [${Object.keys(extraFields)}]`,
       });
     }
 
     // Validation des champs obligatoires
     if (!title || !content || !categoryId) {
       return res.status(400).json({
-        success: false,
         message: "Titre, contenu et catégorie sont obligatoires",
         requiredFields: ["title", "content", "categoryId"],
       });
@@ -72,7 +73,7 @@ const postsController = {
             slug,
             content,
             featuredImage,
-            authorId: req.user.id,
+            authorId: req?.user?.id || authorId,
             categoryId,
             tags: {
               create: tags.map((tagId) => ({ tagId })),
@@ -94,7 +95,6 @@ const postsController = {
 
       res.status(201).json({
         message: "Post créer avec succès",
-        success: true,
         post,
       });
     } catch (error) {
@@ -107,18 +107,30 @@ const postsController = {
 
   // Récupérer tous les articles (avec pagination)
   getAllPosts: async (req, res, next) => {
-    const { page = 1, limit = 10, category, tag, published } = req.query;
+    const { page = 1, limit = 10, category, tag } = req.query;
 
     try {
+      const isBackOffice = !req.user;
       const where = {
-        ...(published && { published: published === "true" }),
+        ...(!isBackOffice && { published: true }),
         ...(category && { category: { slug: category } }),
         ...(tag && { tags: { some: { tag: { slug: tag } } } }),
       };
 
-      const include = {
-        category: true,
-        tags: { include: { tag: true } },
+      // Sélection des champs de base
+      const selectBase = {
+        id: true,
+        title: true,
+        slug: true,
+        featuredImage: true,
+        createdAt: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
         author: {
           select: {
             id: true,
@@ -128,21 +140,28 @@ const postsController = {
         },
       };
 
+      // Champs supplémentaires pour le back-office
+      const selectBackOffice = {
+        published: true,
+        updatedAt: true,
+      };
+
       const result = await paginationQuery(prisma.post, page, limit, {
         where,
-        include,
+        select: {
+          ...selectBase,
+          ...(isBackOffice && selectBackOffice),
+        },
         orderBy: { createdAt: "desc" },
       });
 
       if (result.error) {
         return res.status(400).json({
-          success: false,
           message: result.error,
         });
       }
 
       res.json({
-        success: true,
         ...result,
       });
     } catch (error) {
@@ -155,11 +174,12 @@ const postsController = {
 
   // Recherche d'articles (avec pagination)
   searchPost: async (req, res, next) => {
-    const { q: searchTerm, page = 1, limit = 10 } = req.query;
+    const { q, page = 1, limit = 10 } = req.query;
+
+    const searchTerm = removeAccents(q);
 
     if (!searchTerm || searchTerm.trim() === "") {
       return res.status(400).json({
-        success: false,
         message: "Le terme de recherche est requis",
       });
     }
@@ -169,7 +189,7 @@ const postsController = {
         OR: [
           { title: { contains: searchTerm, mode: "insensitive" } },
           { content: { contains: searchTerm, mode: "insensitive" } },
-          { searchableName: { contains: searchTerm.toLowerCase() } },
+          { searchableName: { contains: searchTerm } },
         ],
       };
 
@@ -193,13 +213,11 @@ const postsController = {
 
       if (result.error) {
         return res.status(400).json({
-          success: false,
           message: result.error,
         });
       }
 
       res.json({
-        success: true,
         searchTerm,
         ...result,
       });
@@ -224,7 +242,6 @@ const postsController = {
 
       if (!category) {
         return res.status(404).json({
-          success: false,
           message: "Catégorie non trouvée",
         });
       }
@@ -254,13 +271,11 @@ const postsController = {
 
       if (result.error) {
         return res.status(400).json({
-          success: false,
           message: result.error,
         });
       }
 
       res.json({
-        success: true,
         category: category.name,
         ...result,
       });
@@ -285,7 +300,6 @@ const postsController = {
 
       if (!tag) {
         return res.status(404).json({
-          success: false,
           message: "Tag non trouvé",
         });
       }
@@ -315,13 +329,11 @@ const postsController = {
 
       if (result.error) {
         return res.status(400).json({
-          success: false,
           message: result.error,
         });
       }
 
       res.json({
-        success: true,
         tag: tag.name,
         ...result,
       });
@@ -334,15 +346,43 @@ const postsController = {
   },
 
   // Récupérer un article par son slug
-  getPostBySlug: async (req, res, next) => {
-    const { slug } = req.params;
+  getPostById: async (req, res, next) => {
+    const { id } = req.params;
 
     try {
+      // Déterminer si la requête vient du back-office
+      const isBackOffice = !!req.user;
+
       const post = await prisma.post.findUnique({
-        where: { slug },
-        include: {
-          category: true,
-          tags: { include: { tag: true } },
+        where: { id },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          content: true,
+          published: isBackOffice, // Inclure 'published' seulement pour le back-office
+          featuredImage: true,
+          createdAt: true,
+          updatedAt: isBackOffice, // Inclure 'updatedAt' seulement pour le back-office
+          authorId: isBackOffice, // Inclure 'authorId' seulement pour le back-office
+          category: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+          tags: {
+            select: {
+              tag: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+            },
+          },
           author: {
             select: {
               id: true,
@@ -352,6 +392,12 @@ const postsController = {
           },
           comments: {
             where: { isApproved: true },
+            select: {
+              id: true,
+              content: true,
+              createdAt: true,
+              visitorName: true,
+            },
             orderBy: { createdAt: "desc" },
           },
         },
@@ -364,27 +410,26 @@ const postsController = {
         });
       }
 
-      // Ne pas renvoyer le contenu si non publié et pas l'auteur/admin
-      if (
-        !post.published &&
-        (!req.user ||
-          (req.user.id !== post.authorId && req.user.role !== "ADMIN"))
-      ) {
+      // Vérification des permissions
+      if (!post.published && !isBackOffice) {
         return res.status(403).json({
           success: false,
-          message: "Accès non autorisé",
+          message: "Accès non autorisé - Article non publié",
         });
       }
 
+      // Formater les tags pour une sortie plus propre
+      const formattedPost = {
+        ...post,
+        tags: post.tags.map((tagObj) => tagObj.tag),
+      };
+
       res.json({
         success: true,
-        post,
+        post: formattedPost,
       });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur",
-      });
     }
   },
 
@@ -404,7 +449,6 @@ const postsController = {
     // Rejet des champs supplémentaires
     if (Object.keys(extraFields).length > 0) {
       return res.status(400).json({
-        success: false,
         message: "Champs non autorisés détectés",
         rejectedFields: Object.keys(extraFields),
       });
@@ -488,7 +532,6 @@ const postsController = {
       });
 
       res.json({
-        success: true,
         post: updatedPost,
       });
     } catch (error) {
@@ -512,7 +555,7 @@ const postsController = {
         });
 
         if (!post) throw new Error("Article non trouvé");
-        if (post.authorId !== req.user.id && req.user.role !== "ADMIN") {
+        if (post.authorId !== req.user?.id && req.user?.role !== "ADMIN") {
           throw new Error("Non autorisé à supprimer cet article");
         }
 
@@ -524,7 +567,6 @@ const postsController = {
       });
 
       res.json({
-        success: true,
         message: "Article supprimé avec succès",
       });
     } catch (error) {
@@ -532,6 +574,247 @@ const postsController = {
       return res.status(500).json({
         message: error.message || "Erreur serveur",
       });
+    }
+  },
+
+  /* ====================== */
+  /* === GESTION DES COMMENTAIRES === */
+  /* ====================== */
+
+  // Ajouter un commentaire
+  addComment: async (req, res, next) => {
+    const { postId } = req.params;
+    const { content, visitorName, visitorEmail } = req.body;
+
+    try {
+      // Vérifier que le post existe et est publié
+      const post = await prisma.post.findUnique({
+        where: { id: postId },
+      });
+
+      if (!post) {
+        return res.status(404).json({
+          message: "Article non trouvé",
+        });
+      }
+
+      if (!post.published) {
+        return res.status(403).json({
+          message: "Impossible de commenter un article non publié",
+        });
+      }
+
+      // Créer le commentaire
+      const comment = await prisma.comment.create({
+        data: {
+          content,
+          visitorName,
+          visitorEmail,
+          postId,
+        },
+      });
+
+      res.status(201).json({
+        message: "Commentaire ajouté avec succès",
+        comment,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Récupérer les commentaires d'un article
+  getPostComments: async (req, res, next) => {
+    const { postId } = req.params;
+    const { page = 1, limit = 10, approvedOnly = "true" } = req.query;
+
+    try {
+      // Vérifier que le post existe
+      const post = await prisma.post.findUnique({
+        where: { id: postId },
+      });
+
+      if (!post) {
+        return res.status(404).json({
+          message: "Article non trouvé",
+        });
+      }
+
+      const where = {
+        postId,
+        ...(approvedOnly === "true" && { isApproved: true }),
+      };
+
+      const result = await paginationQuery(prisma.comment, page, limit, {
+        where,
+        orderBy: { createdAt: "desc" },
+      });
+
+      res.json({
+        ...result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /* ====================== */
+  /* === GESTION DES CATÉGORIES === */
+  /* ====================== */
+
+  // Récupérer toutes les catégories
+  getAllCategories: async (req, res, next) => {
+    const { page, limit } = req.query;
+    try {
+      const categories = await paginationQuery(prisma.category, page, limit);
+
+      res.json({
+        categories,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Créer une nouvelle catégorie
+  createCategory: async (req, res, next) => {
+    const { name, description } = req.body;
+
+    try {
+      // Générer un slug unique
+      const slug = await generateUniqueSlug(name, "category");
+
+      const category = await prisma.category.create({
+        data: {
+          name,
+          slug,
+          description,
+        },
+      });
+
+      res.status(201).json({
+        message: "Catégorie créée avec succès",
+        category,
+      });
+    } catch (error) {
+      if (error.code === "P2002") {
+        return res.status(400).json({
+          message: "Une catégorie avec ce nom existe déjà",
+        });
+      }
+      next(error);
+    }
+  },
+
+  /* ====================== */
+  /* === GESTION DES TAGS === */
+  /* ====================== */
+
+  // Récupérer tous les tags
+  getAllTags: async (req, res, next) => {
+    const { page, limit } = req.query;
+    try {
+      const tags = await paginationQuery(prisma.tag, page, limit);
+
+      res.json({
+        tags,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Créer un nouveau tag
+  createTag: async (req, res, next) => {
+    const { name } = req.body;
+
+    try {
+      // Générer un slug unique
+      const slug = await generateUniqueSlug(name, "tag");
+
+      const tag = await prisma.tag.create({
+        data: {
+          name,
+          slug,
+        },
+      });
+
+      res.status(201).json({
+        message: "Tag créé avec succès",
+        tag,
+      });
+    } catch (error) {
+      if (error.code === "P2002") {
+        return res.status(400).json({
+          message: "Un tag avec ce nom existe déjà",
+        });
+      }
+      next(error);
+    }
+  },
+
+  /* ====================== */
+  /* === FONCTIONS ADMIN === */
+  /* ====================== */
+
+  // Modérer un commentaire (approuver/rejeter)
+  moderateComment: async (req, res, next) => {
+    const { commentId } = req.params;
+    const { action } = req.body; // "approve" ou "reject"
+
+    try {
+      // Vérifier que le commentaire existe
+      const comment = await prisma.comment.findUnique({
+        where: { id: commentId },
+      });
+
+      if (!comment) {
+        return res.status(404).json({
+          message: "Commentaire non trouvé",
+        });
+      }
+
+      const updatedComment = await prisma.comment.update({
+        where: { id: commentId },
+        data: {
+          isApproved: action === "approve",
+        },
+      });
+
+      res.json({
+        message: `Commentaire ${action === "approve" ? "approuvé" : "rejeté"}`,
+        comment: updatedComment,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Supprimer un commentaire (admin)
+  deleteComment: async (req, res, next) => {
+    const { commentId } = req.params;
+
+    try {
+      // Vérifier que le commentaire existe
+      const comment = await prisma.comment.findUnique({
+        where: { id: commentId },
+      });
+
+      if (!comment) {
+        return res.status(404).json({
+          message: "Commentaire non trouvé",
+        });
+      }
+
+      await prisma.comment.delete({
+        where: { id: commentId },
+      });
+
+      res.json({
+        message: "Commentaire supprimé avec succès",
+      });
+    } catch (error) {
+      next(error);
     }
   },
 };

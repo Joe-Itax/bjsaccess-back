@@ -1,3 +1,92 @@
+// const { Router } = require("express");
+// const postsRouter = Router();
+// const postsController = require("../controllers/posts.controller");
+// const {
+//   authenticate,
+//   attachTokenRefreshToResponse,
+// } = require("../middlewares/index.middleware");
+// const { check } = require("express-validator");
+
+// // Validation commune
+// const postValidation = [
+//   check("title").notEmpty().withMessage("Le titre est requis"),
+//   check("content").notEmpty().withMessage("Le contenu est requis"),
+//   check("categoryId").isUUID().withMessage("ID de catégorie invalide"),
+// ];
+
+// // Routes publiques
+// postsRouter.get("/", postsController.getAllPosts);
+// postsRouter.get("/:id", postsController.getPostById);
+// postsRouter.get("/search", postsController.searchPost);
+// postsRouter.get("/category/:categorySlug", postsController.getPostsByCategory);
+// postsRouter.get("/tag/:tagSlug", postsController.getPostsByTag);
+
+// // Routes protégées
+// postsRouter.post(
+//   "/",
+//   // authenticate(),
+//   // attachTokenRefreshToResponse,
+//   postValidation,
+//   postsController.createPost
+// );
+
+// postsRouter.put(
+//   "/:id",
+//   // authenticate(),
+//   // attachTokenRefreshToResponse,
+//   postValidation,
+//   postsController.updatePost
+// );
+
+// postsRouter.delete(
+//   "/:id",
+//   // authenticate(),
+//   // attachTokenRefreshToResponse,
+//   postsController.deletePost
+// );
+
+// // Routes pour les commentaires
+// postsRouter.post(
+//   "/:postId/comments",
+//   [
+//     check("content").notEmpty().withMessage("Le contenu est requis"),
+//     check("visitorName").notEmpty().withMessage("Le nom est requis"),
+//     check("visitorEmail").isEmail().withMessage("Email invalide"),
+//   ],
+//   postsController.addComment
+// );
+
+// postsRouter.get("/:postId/comments", postsController.getPostComments);
+// postsRouter.put(
+//   "/:postId/comments/:commentId",
+//   postsController.moderateComment
+// );
+// postsRouter.delete(
+//   "/:postId/comments/:commentId",
+//   postsController.deleteComment
+// );
+
+// // Routes pour les catégories (admin)
+// postsRouter.get("/categories/all", postsController.getAllCategories);
+// postsRouter.post(
+//   "/categories",
+//   // authenticate(),
+//   // attachTokenRefreshToResponse,
+//   [check("name").notEmpty().withMessage("Le nom est requis")],
+//   postsController.createCategory
+// );
+
+// // Routes pour les tags (admin)
+// postsRouter.get("/tags/all", postsController.getAllTags);
+// postsRouter.post(
+//   "/tags",
+//   // authenticate(),
+//   // attachTokenRefreshToResponse,
+//   [check("name").notEmpty().withMessage("Le nom est requis")],
+//   postsController.createTag
+// );
+
+// module.exports = postsRouter;
 const { Router } = require("express");
 const postsRouter = Router();
 const postsController = require("../controllers/posts.controller");
@@ -14,35 +103,91 @@ const postValidation = [
   check("categoryId").isUUID().withMessage("ID de catégorie invalide"),
 ];
 
-// Routes publiques
-postsRouter.get("/", postsController.getAllPosts);
-postsRouter.get("/:slug", postsController.getPostBySlug);
-postsRouter.get("/search", postsController.searchPost);
-postsRouter.get("/category/:categorySlug", postsController.getPostsByCategory);
-postsRouter.get("/tag/:tagSlug", postsController.getPostsByTag);
+// ======================================
+// === ROUTES PUBLIQUES (FRONT OFFICIEL) ===
+// ======================================
 
-// Routes protégées
+// Articles
+postsRouter.get("/", postsController.getAllPosts);
+postsRouter.get("/search", postsController.searchPost);
+postsRouter.get("/:id", postsController.getPostById);
+postsRouter.get("/category/:slug", postsController.getPostsByCategory);
+postsRouter.get("/tag/:slug", postsController.getPostsByTag);
+
+// Commentaires
 postsRouter.post(
-  "/",
+  "/:postId/comments",
+  [
+    check("content").notEmpty().withMessage("Le contenu est requis"),
+    check("visitorName").notEmpty().withMessage("Le nom est requis"),
+    check("visitorEmail").isEmail().withMessage("Email invalide"),
+  ],
+  postsController.addComment
+);
+postsRouter.get("/:postId/comments", postsController.getPostComments);
+
+// =====================================
+// === ROUTES PROTÉGÉES (BACK-OFFICE) ===
+// =====================================
+
+// Articles
+postsRouter.post(
+  "/admin/posts",
   authenticate(),
   attachTokenRefreshToResponse,
   postValidation,
   postsController.createPost
 );
-
 postsRouter.put(
-  "/:id",
+  "/admin/:id",
   authenticate(),
   attachTokenRefreshToResponse,
   postValidation,
   postsController.updatePost
 );
-
 postsRouter.delete(
-  "/:id",
+  "/admin/:id",
   authenticate(),
   attachTokenRefreshToResponse,
   postsController.deletePost
+);
+
+// Modération des commentaires
+postsRouter.put(
+  "/admin/:postId/comments/:commentId",
+  authenticate(),
+  attachTokenRefreshToResponse,
+  postsController.moderateComment
+);
+postsRouter.delete(
+  "/admin/:postId/comments/:commentId",
+  authenticate(),
+  attachTokenRefreshToResponse,
+  postsController.deleteComment
+);
+
+// ==============================
+// === GESTION DES CATÉGORIES ===
+// ==============================
+postsRouter.get("/categories/all", postsController.getAllCategories);
+postsRouter.post(
+  "/admin/categories",
+  authenticate(),
+  attachTokenRefreshToResponse,
+  [check("name").notEmpty().withMessage("Le nom est requis")],
+  postsController.createCategory
+);
+
+// ========================
+// === GESTION DES TAGS ===
+// ========================
+postsRouter.get("/tags/all", postsController.getAllTags);
+postsRouter.post(
+  "/admin/tags",
+  authenticate(),
+  attachTokenRefreshToResponse,
+  [check("name").notEmpty().withMessage("Le nom est requis")],
+  postsController.createTag
 );
 
 module.exports = postsRouter;
