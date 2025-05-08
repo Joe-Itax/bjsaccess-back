@@ -1,10 +1,13 @@
 const authBaseURI = "/api/auth";
 
-const postBaseURI = "/api/post";
+const postBaseURI = "/api/posts";
+
+const usersBaseURI = "/api/users";
 
 const paths = {
   authBaseURI: authBaseURI,
-  postBaseURI: postBaseURI,
+  postsBaseURI: postBaseURI,
+  usersBaseURI: usersBaseURI
 };
 
 module.exports = paths;

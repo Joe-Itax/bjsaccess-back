@@ -288,10 +288,10 @@ const authController = {
 
       res.json({ message: "Déconnexion réussie" });
     } catch (error) {
-        next(error);
-         return res.status(500).json({
-           message: error.message || "Erreur serveur lors de la deconnexion.",
-         });
+      next(error);
+      return res.status(500).json({
+        message: error.message || "Erreur serveur lors de la deconnexion.",
+      });
     }
   },
 
@@ -347,4 +347,7 @@ function generateRefreshToken(user) {
   );
 }
 
-module.exports = authController;
+module.exports = {
+  authController,
+  generateAccessToken,
+};

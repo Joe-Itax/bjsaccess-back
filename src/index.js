@@ -6,12 +6,22 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const passport = require("passport");
 
-const corsLogger = require("./middlewares/cors-logger.middleware");
-const securityMiddleware = require("./middlewares/security.middleware");
-const prismaErrorHandler = require("./middlewares/prisma-error-handler.middleware");
-const { authBaseURI } = require("./config/path.config");
-const authRouter = require("./routes/auth.routes");
-const isProduction = process.env.NODE_ENV === "production";
+const {
+  prismaErrorHandler,
+  corsLogger,
+  security,
+} = require("./middlewares/index.middleware");
+const {
+  authBaseURI,
+  postsBaseURI,
+  usersBaseURI,
+} = require("./config/path.config");
+const {
+  authRouter,
+  postsRouter,
+  usersRouter,
+} = require("./routes/index.routes");
+// const isProduction = process.env.NODE_ENV === "production";
 
 /**
  * ------------------  GENERAL SETUP  ---------------
@@ -48,17 +58,15 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 
-app.use(...securityMiddleware());
+app.use(...security());
 app.use(cookieParser());
 app.use(corsLogger);
 app.use(cors(corsOptions));
-// app.options("*", cors(corsOptions));
 
 /**
  * -------------- PASSPORT AUTHENTICATION ----------------
  */
 app.use(passport.initialize());
-// Configuration de la stratégie locale (email + mot de passe)
 require("./config/passport-strategies/jwt");
 
 /**
@@ -75,6 +83,8 @@ app.get("/", (req, res) => {
 });
 
 app.use(authBaseURI, authRouter);
+app.use(postsBaseURI, postsRouter);
+app.use(usersBaseURI, usersRouter);
 
 /**
  * Middleware d’erreur Prisma

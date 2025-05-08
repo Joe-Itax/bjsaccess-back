@@ -6,6 +6,7 @@ CREATE TABLE "User" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "name" TEXT,
+    "searchableName" TEXT NOT NULL DEFAULT '',
     "password" TEXT NOT NULL,
     "role" "Role" NOT NULL DEFAULT 'AUTHOR',
     "profileImage" TEXT,
