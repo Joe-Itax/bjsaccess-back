@@ -129,6 +129,8 @@ const usersController = {
               posts: true,
             },
           },
+          createdAt: true,
+          updatedAt: true,
         },
       });
 
@@ -168,6 +170,8 @@ const usersController = {
             },
           },
           posts: true,
+          createdAt: true,
+          updatedAt: true,
         },
       });
 
