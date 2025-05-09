@@ -405,7 +405,6 @@ const postsController = {
 
       if (!post) {
         return res.status(404).json({
-          success: false,
           message: "Article non trouvé",
         });
       }
@@ -413,7 +412,6 @@ const postsController = {
       // Vérification des permissions
       if (!post.published && !isBackOffice) {
         return res.status(403).json({
-          success: false,
           message: "Accès non autorisé - Article non publié",
         });
       }
@@ -425,11 +423,15 @@ const postsController = {
       };
 
       res.json({
-        success: true,
         post: formattedPost,
       });
     } catch (error) {
       next(error);
+      res.status(500).json({
+        message: "Erreur lors de la récupération du post",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
     }
   },
 
@@ -464,8 +466,8 @@ const postsController = {
 
         if (!existingPost) throw new Error("Article non trouvé");
         if (
-          existingPost.authorId !== req.user.id &&
-          req.user.role !== "ADMIN"
+          existingPost.authorId !== req.user?.id &&
+          req.user?.role !== "ADMIN"
         ) {
           throw new Error("Non autorisé à modifier cet article");
         }
@@ -527,6 +529,7 @@ const postsController = {
                 profileImage: true,
               },
             },
+            comments: true,
           },
         });
       });
@@ -815,6 +818,191 @@ const postsController = {
       });
     } catch (error) {
       next(error);
+    }
+  },
+
+  getBlogDashboardStats: async (req, res, next) => {
+    try {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastMonthEnd = new Date(startOfMonth.getTime() - 1);
+      const threeMonthsAgo = new Date(new Date().setMonth(now.getMonth() - 3));
+
+      // Formatage des dates pour comparaison
+      const formatDateForComparison = (date) => {
+        const d = new Date(date);
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+          .toISOString()
+          .split("T")[0];
+      };
+
+      // Exécution en parallèle de toutes les requêtes
+      const [
+        totalPosts,
+        publishedPosts,
+        newPostsThisMonth,
+        totalComments,
+        approvedComments,
+        newCommentsThisMonth,
+        totalCategories,
+        totalTags,
+        postsLastMonth,
+        postsGroup,
+        commentsGroup,
+        popularPosts,
+      ] = await Promise.all([
+        // Statistiques de base
+        prisma.post.count(),
+        prisma.post.count({ where: { published: true } }),
+        prisma.post.count({
+          where: {
+            createdAt: { gte: startOfMonth },
+            published: true,
+          },
+        }),
+        prisma.comment.count(),
+        prisma.comment.count({ where: { isApproved: true } }),
+        prisma.comment.count({
+          where: {
+            createdAt: { gte: startOfMonth },
+            isApproved: true,
+          },
+        }),
+        prisma.category.count(),
+        prisma.tag.count(),
+        prisma.post.count({
+          where: {
+            createdAt: {
+              gte: lastMonthStart,
+              lte: lastMonthEnd,
+            },
+            published: true,
+          },
+        }),
+
+        // Données pour graphiques - Posts par date
+        prisma.post.groupBy({
+          by: ["createdAt"],
+          where: {
+            createdAt: { gte: threeMonthsAgo },
+            published: true,
+          },
+          _count: { id: true },
+          orderBy: { createdAt: "asc" },
+        }),
+
+        // Données pour graphiques - Commentaires par date
+        prisma.comment.groupBy({
+          by: ["createdAt"],
+          where: {
+            createdAt: { gte: threeMonthsAgo },
+            isApproved: true,
+          },
+          _count: { id: true },
+          orderBy: { createdAt: "asc" },
+        }),
+
+        // Posts les plus populaires
+        prisma.post.findMany({
+          where: { published: true },
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            _count: { select: { comments: true } },
+          },
+          orderBy: { comments: { _count: "desc" } },
+          take: 5,
+        }),
+      ]);
+
+      // Calcul des taux
+      const postsGrowthRate =
+        postsLastMonth === 0
+          ? newPostsThisMonth > 0
+            ? 100
+            : 0
+          : ((newPostsThisMonth - postsLastMonth) / postsLastMonth) * 100;
+
+      const approvalRate =
+        totalComments === 0 ? 0 : (approvedComments / totalComments) * 100;
+
+      // Préparation des données combinées pour les graphiques
+      const combinedChartData = [];
+      const dateMap = new Map();
+
+      // Traitement des posts
+      postsGroup.forEach((post) => {
+        const dateKey = formatDateForComparison(post.createdAt);
+        if (!dateMap.has(dateKey)) {
+          dateMap.set(dateKey, { posts: 0, comments: 0 });
+        }
+        dateMap.get(dateKey).posts += post._count.id;
+      });
+
+      // Traitement des commentaires
+      commentsGroup.forEach((comment) => {
+        const dateKey = formatDateForComparison(comment.createdAt);
+        if (!dateMap.has(dateKey)) {
+          dateMap.set(dateKey, { posts: 0, comments: 0 });
+        }
+        dateMap.get(dateKey).comments += comment._count.id;
+      });
+
+      // Remplissage des dates sans activité
+      const currentDate = new Date(threeMonthsAgo);
+      while (currentDate <= now) {
+        const dateKey = formatDateForComparison(currentDate);
+        const data = dateMap.get(dateKey) || { posts: 0, comments: 0 };
+
+        combinedChartData.push({
+          date: new Date(dateKey),
+          posts: data.posts,
+          comments: data.comments,
+        });
+
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Formatage des posts populaires
+      const formattedPopularPosts = popularPosts.map((post) => ({
+        id: post.id,
+        title: post.title,
+        slug: post.slug,
+        commentsCount: post._count.comments,
+      }));
+
+      return res.status(200).json({
+        // Statistiques de base
+        totalPosts,
+        publishedPosts,
+        draftPosts: totalPosts - publishedPosts,
+        newPostsThisMonth,
+        totalComments,
+        approvedComments,
+        pendingComments: totalComments - approvedComments,
+        newCommentsThisMonth,
+        totalCategories,
+        totalTags,
+
+        // Indicateurs
+        postsGrowthRate: Math.round(postsGrowthRate),
+        approvalRate: Math.round(approvalRate),
+
+        // Données combinées pour graphiques
+        charts: combinedChartData,
+
+        // Classements
+        popularPosts: formattedPopularPosts,
+      });
+    } catch (error) {
+      next(error);
+      res.status(500).json({
+        message: "Erreur lors de la récupération des statistiques",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
     }
   },
 };
