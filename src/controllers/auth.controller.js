@@ -1,14 +1,11 @@
 const jwt = require("jsonwebtoken");
-const { prisma } = require("../lib/prisma");
-const { compareHash, hashValue } = require("../utils");
 const { ExtractJwt } = require("passport-jwt");
+const { prisma } = require("../lib/prisma");
+const { compareHash } = require("../utils");
 
 const emailValid = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-const passwordValid = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-const validRoles = ["AUTHOR", "ADMIN"];
 
 const authController = {
-
   // Login avec email et mot de passe
   login: async (req, res, next) => {
     const { email, password, ...extraFields } = req.body;
