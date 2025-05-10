@@ -12,7 +12,7 @@ function authenticate() {
       async (err, user, info) => {
         if (err) return next(err);
 
-        const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+        const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req) || "";
 
         try {
           const revoked = await prisma.revokedToken.findUnique({
