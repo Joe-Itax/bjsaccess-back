@@ -14,8 +14,8 @@ authRouter.post("/login", authController.login);
 authRouter.post("/logout", authenticate(), authController.logout);
 authRouter.post(
   "/refresh-token",
-  authenticate(),
-  attachTokenRefreshToResponse,
+  // authenticate(),
+  // attachTokenRefreshToResponse,
   authController.refreshToken
 );
 

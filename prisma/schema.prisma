@@ -22,6 +22,7 @@ model User {
   role           Role           @default(AUTHOR)
   profileImage   String?
   bio            String?
+  isActive       Boolean        @default(true)
   posts          Post[]
   refreshToken   String?
   RevokedToken   RevokedToken[]

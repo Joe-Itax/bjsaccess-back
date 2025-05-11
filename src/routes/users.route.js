@@ -1,13 +1,30 @@
 const { Router } = require("express");
-const authenticate = require("../middlewares/authenticate.middleware");
 const { usersController } = require("../controllers/index.controller");
+const hasRole = require("../middlewares/role.middleware");
+const { authenticate } = require("../middlewares/index.middleware");
 const usersRouter = Router();
 
-usersRouter.get("/search", usersController.searchUser);
-usersRouter.get("/", usersController.getAllUsers);
-usersRouter.post("/", usersController.createUser);
-usersRouter.get("/:userId", usersController.getUserById);
-usersRouter.put("/:userId", usersController.updateUser);
-usersRouter.delete("/:userId", usersController.deleteUser);
+usersRouter.get("/search", authenticate(), usersController.searchUser);
+usersRouter.get("/", authenticate(), usersController.getAllUsers);
+usersRouter.post(
+  "/",
+  authenticate(),
+  hasRole(["ADMIN"]),
+  usersController.createUser
+);
+usersRouter.get("/:userId", authenticate(), usersController.getUserById);
+usersRouter.put("/:userId", authenticate(), usersController.updateUser);
+usersRouter.delete(
+  "/:userId",
+  authenticate(),
+  hasRole("ADMIN"),
+  usersController.deleteUser
+);
+usersRouter.delete(
+  "/deactivate",
+  authenticate(),
+  hasRole("ADMIN"),
+  usersController.deactiveUsers
+);
 
 module.exports = usersRouter;

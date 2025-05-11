@@ -15,6 +15,9 @@ function authenticate() {
         const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req) || "";
 
         try {
+          if (!token) {
+            return res.status(404).json({ message: "Token non fourni." });
+          }
           const revoked = await prisma.revokedToken.findUnique({
             where: { token },
           });
@@ -60,7 +63,8 @@ async function attachTokenRefresh(user, res) {
 }
 
 async function tryAttachExpiredToken(req, res, next) {
-  const refreshToken = req.headers["x-refresh-token"] || req.body.refreshToken;
+  const refreshToken =
+    req.headers["x-refresh-token"] || req.body || "".refreshToken;
 
   if (!refreshToken) {
     return res.status(401).json({

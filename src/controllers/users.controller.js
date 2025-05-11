@@ -95,6 +95,7 @@ const usersController = {
         email: newUser.email,
         name: newUser.name,
         role: newUser.role,
+        isActive: newUser.isActive,
         createdAt: newUser.createdAt,
         updatedAt: newUser.updatedAt,
       };
@@ -124,6 +125,7 @@ const usersController = {
           email: true,
           name: true,
           role: true,
+          isActive: true,
           _count: {
             select: {
               posts: true,
@@ -164,6 +166,7 @@ const usersController = {
           email: true,
           name: true,
           role: true,
+          isActive: true,
           _count: {
             select: {
               posts: true,
@@ -196,6 +199,7 @@ const usersController = {
   // Rechercher un utilisateur par email ou nom
   searchUser: async (req, res, next) => {
     const { q, page, limit } = req.query;
+    console.log("query: ", q);
     if (!q || typeof q !== "string") {
       return res.status(400).json({
         message: "Veuillez fournir une requête de recherche.",
@@ -226,6 +230,7 @@ const usersController = {
           email: true,
           name: true,
           role: true,
+          isActive: true,
           _count: {
             select: {
               posts: true,
@@ -413,32 +418,87 @@ const usersController = {
     }
   },
 
-  // Supprimer un utilisateur
-  deleteUser: async (req, res, next) => {
-    const { userId } = req.params;
+  // Désactiver un ou plusieurs utilisateurs
+  deactiveUsers: async (req, res, next) => {
+    const { userIds, ...extraFields } = req.body;
+
+    // Validation des données (inchangée)
+    if (Object.keys(extraFields).length > 0) {
+      return res.status(400).json({
+        message: "Seul 'userIds' est autorisé.",
+      });
+    }
+
+    if (!Array.isArray(userIds)) {
+      return res.status(400).json({
+        message: "Le corps de la requête doit contenir un tableau 'userIds'.",
+      });
+    }
+
+    if (userIds.length === 0) {
+      return res.status(400).json({
+        message: "Aucun identifiant d'utilisateur fourni.",
+      });
+    }
+
+    // Validation des IDs
+    const invalidIds = userIds.filter(
+      (id) => typeof id !== "string" || !id.trim()
+    );
+    if (invalidIds.length > 0) {
+      return res.status(400).json({
+        message: `IDs invalides: ${invalidIds.join(", ")}`,
+      });
+    }
     try {
-      const { deletedUser } = await prisma.$transaction(async (tx) => {
-        const existingUser = await tx.user.findUnique({
-          where: { id: userId },
-        });
+      const deactivatedUsers = [];
+      await prisma.$transaction(async (tx) => {
+        for (const id of userIds) {
+          const user = await tx.user.findFirst({
+            where: {
+              id,
+              isActive: true,
+            },
+          });
 
-        if (!existingUser) {
-          throw new Error("Utilisateur non trouvé.", { status: 404 });
+          if (!user) continue;
+
+          // Désactiver l'utilisateur (soft delete)
+          await tx.user.update({
+            where: { id },
+            data: { isActive: false },
+          });
+
+          deactivatedUsers.push({
+            id: user.id,
+            name: user.name,
+            role: user.role,
+          });
         }
-
-        const deletedUser = await tx.user.delete({
-          where: { id: userId },
-          select: {
-            name: true,
-            role: true,
-          },
-        });
-
-        return { deletedUser };
       });
 
+      if (deactivatedUsers.length === 0) {
+        return res.status(404).json({
+          message:
+            "Aucun utilisateur actif trouvé avec les identifiants fournis.",
+        });
+      }
+
+      const userCount = deactivatedUsers.length;
+
+      const userNames = deactivatedUsers
+        .map((u) => `${u.name} (${u.role})`)
+        .join(", ");
+
+      let message = `${userCount} utilisateur${
+        userCount > 1 ? "s" : ""
+      } désactivé${userCount > 1 ? "s" : ""}: ${userNames}`;
+
+      console.log("Soft delete effectué:", message);
+
       return res.status(200).json({
-        message: `L'utilisateur '${deletedUser.name}-${deletedUser.role}' a été supprimé.`,
+        message,
+        deactivatedUsers,
       });
     } catch (error) {
       next(error);
@@ -449,6 +509,109 @@ const usersController = {
       }
       return res.status(500).json({
         message: "Erreur serveur.",
+        details:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
+    }
+  },
+
+  // Supprimer définitivement un utilisateur (Et toutes les data lui rattaché)
+  deleteUser: async (req, res, next) => {
+    const { userId, ...extraFields } = req.body;
+
+    // Validation des données
+    if (Object.keys(extraFields).length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Seul 'userId' est autorisé.",
+      });
+    }
+
+    if (!userId || typeof userId !== "string") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "L'identifiant de l'utilisateur est requis et doit être une chaîne de caractères.",
+      });
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // 1. Vérifier que l'utilisateur existe et n'est pas un ADMIN
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: { id: true, role: true, posts: { select: { id: true } } },
+        });
+
+        if (!user) {
+          throw new Error("Utilisateur non trouvé");
+        }
+
+        if (user.role === "ADMIN") {
+          throw new Error("Impossible de supprimer un administrateur");
+        }
+
+        // 2. Supprimer les tokens révoqués associés
+        await tx.revokedToken.deleteMany({
+          where: { userId },
+        });
+
+        // 3. Supprimer les commentaires de l'utilisateur (s'ils existent)
+        await tx.comment.deleteMany({
+          where: { visitorEmail: user.email },
+        });
+
+        // 4. Pour chaque post de l'utilisateur :
+        for (const post of user.posts) {
+          // a. Supprimer les relations tags
+          await tx.tagsOnPosts.deleteMany({
+            where: { postId: post.id },
+          });
+
+          // b. Supprimer les commentaires du post
+          await tx.comment.deleteMany({
+            where: { postId: post.id },
+          });
+        }
+
+        // 5. Supprimer tous les posts de l'utilisateur
+        await tx.post.deleteMany({
+          where: { authorId: userId },
+        });
+
+        // 6. Finalement supprimer l'utilisateur
+        await tx.user.delete({
+          where: { id: userId },
+        });
+      });
+
+      return res.json({
+        success: true,
+        message:
+          "Utilisateur et toutes ses données associées ont été supprimés définitivement",
+      });
+    } catch (error) {
+      next(error);
+
+      // Gestion des erreurs spécifiques
+      if (error.message === "Utilisateur non trouvé") {
+        return res.status(404).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      if (error.message === "Impossible de supprimer un administrateur") {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      // Erreur serveur générique
+      return res.status(500).json({
+        success: false,
+        message: "Erreur lors de la suppression de l'utilisateur",
         details:
           process.env.NODE_ENV === "development" ? error.message : undefined,
       });

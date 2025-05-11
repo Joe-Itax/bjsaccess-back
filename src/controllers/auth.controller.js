@@ -61,8 +61,10 @@ const authController = {
       const { user, refreshToken, accessToken } = await prisma.$transaction(
         async (tx) => {
           // 1. Vérification de l'existence de l'utilisateur
-          const user = await tx.user.findUnique({ where: { email } });
-          if (!user) throw new Error("Aucun compte associé à cet email");
+          const user = await tx.user.findFirst({
+            where: { email, isActive: true },
+          });
+          if (!user) throw new Error("Aucun compte actif associé à cet email");
 
           // 2. Vérification du mot de passe
           const passwordMatch = await compareHash(password, user.password);
@@ -88,6 +90,7 @@ const authController = {
         email: user.email,
         name: user.name,
         role: user.role,
+        isActive: true,
         profileImage: user.profileImage,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
@@ -203,6 +206,7 @@ const authController = {
           email: true,
           name: true,
           role: true,
+          isActive: true,
           profileImage: true,
         },
       });
