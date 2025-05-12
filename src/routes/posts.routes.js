@@ -1,4 +1,3 @@
-
 // module.exports = postsRouter;
 const { Router } = require("express");
 const postsRouter = Router();

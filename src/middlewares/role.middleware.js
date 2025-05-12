@@ -1,6 +1,5 @@
 function hasRole(requiredRoles) {
   return (req, res, next) => {
-    console.log("req.user dans hasRole Middleware: ", req?.user);
     if (!Array.isArray(requiredRoles)) {
       requiredRoles = [requiredRoles];
     }

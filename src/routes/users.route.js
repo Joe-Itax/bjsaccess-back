@@ -15,16 +15,16 @@ usersRouter.post(
 usersRouter.get("/:userId", authenticate(), usersController.getUserById);
 usersRouter.put("/:userId", authenticate(), usersController.updateUser);
 usersRouter.delete(
-  "/:userId",
-  authenticate(),
-  hasRole("ADMIN"),
-  usersController.deleteUser
-);
-usersRouter.delete(
   "/deactivate",
   authenticate(),
   hasRole("ADMIN"),
   usersController.deactiveUsers
+);
+usersRouter.delete(
+  "/:userId",
+  authenticate(),
+  hasRole("ADMIN"),
+  usersController.deleteUser
 );
 
 module.exports = usersRouter;
