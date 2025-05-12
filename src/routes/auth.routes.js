@@ -1,10 +1,13 @@
 const { Router } = require("express");
-const { authenticate, attachTokenRefreshToResponse } = require("../middlewares/index.middleware");
+const {
+  authenticate,
+  attachTokenRefreshToResponse,
+} = require("../middlewares/index.middleware");
 const { authController } = require("../controllers/index.controller");
 
 const authRouter = Router();
 
-authRouter.get(
+authRouter.post(
   "/check-auth",
   authenticate(),
   attachTokenRefreshToResponse,

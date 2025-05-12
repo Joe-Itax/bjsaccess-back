@@ -64,7 +64,7 @@ async function attachTokenRefresh(user, res) {
 
 async function tryAttachExpiredToken(req, res, next) {
   const refreshToken =
-    req.headers["x-refresh-token"] || req.body || "".refreshToken;
+    req.headers["x-refresh-token"] || req.body?.refreshToken || "";
 
   if (!refreshToken) {
     return res.status(401).json({
