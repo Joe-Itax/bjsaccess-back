@@ -4,6 +4,7 @@ const { hashValue, removeAccents, paginationQuery } = require("../utils");
 const emailValid = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const passwordValid = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
 const validRoles = ["AUTHOR", "ADMIN"];
+const protectedAccounts = process.env.PROTECTED_ACCOUNTS.split(",");
 
 const usersController = {
   // Ajouter un nouvel utilisateur
@@ -268,7 +269,7 @@ const usersController = {
     const { ...rest } = req.body;
 
     // Champs autorisés
-    const allowedFields = ["email", "name", "password", "role"];
+    const allowedFields = ["email", "name", "password", "role", "isActive"];
     const unknownFields = Object.keys(rest).filter(
       (key) => !allowedFields.includes(key)
     );
@@ -281,14 +282,22 @@ const usersController = {
 
     // Validation du type des valeurs
     const typeErrors = [];
-    if (rest.name !== undefined && typeof rest.name !== "string") {
-      typeErrors.push("Le nom doit être une chaîne de caractères");
+    if (
+      (rest.name !== undefined && typeof rest.name !== "string") ||
+      (rest.name !== undefined && !rest.name.trim().length >= 2)
+    ) {
+      typeErrors.push(
+        "Le nom doit être une chaîne de caractères de minimum 2 caractères"
+      );
     }
     if (rest.email !== undefined && typeof rest.email !== "string") {
       typeErrors.push("L'email doit être une chaîne de caractères");
     }
     if (rest.password !== undefined && typeof rest.password !== "string") {
       typeErrors.push("Le mot de passe doit être une chaîne de caractères");
+    }
+    if (rest.isActive !== undefined && typeof rest.isActive !== "boolean") {
+      typeErrors.push("isActive doit être un booléen");
     }
 
     if (typeErrors.length > 0) {
@@ -321,12 +330,6 @@ const usersController = {
             break;
 
           case "name":
-            // Validation supplémentaire pour le nom
-            if (rest[key].trim().length === 0) {
-              return res
-                .status(400)
-                .json({ message: "Le nom ne peut pas être vide." });
-            }
             dataToUpdate.name = rest[key].trim();
             dataToUpdate.searchableName = removeAccents(rest[key].trim());
             break;
@@ -353,7 +356,7 @@ const usersController = {
     }
 
     // Si un non-admin tente de modifier le rôle : interdit
-    if (!isAdmin && rest.role !== undefined) {
+    if (isAdmin && rest.role !== undefined) {
       return res.status(403).json({
         message: "Seul un administrateur peut modifier le rôle.",
       });
@@ -422,7 +425,7 @@ const usersController = {
   deactiveUsers: async (req, res, next) => {
     const { userIds, ...extraFields } = req.body;
 
-    // Validation des données (inchangée)
+    // Validation des données
     if (Object.keys(extraFields).length > 0) {
       return res.status(400).json({
         message: "Seul 'userIds' est autorisé.",
@@ -450,8 +453,11 @@ const usersController = {
         message: `IDs invalides: ${invalidIds.join(", ")}`,
       });
     }
+
     try {
       const deactivatedUsers = [];
+      const protectedUsers = [];
+
       await prisma.$transaction(async (tx) => {
         for (const id of userIds) {
           const user = await tx.user.findFirst({
@@ -459,9 +465,33 @@ const usersController = {
               id,
               isActive: true,
             },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
           });
 
           if (!user) continue;
+
+          // Vérifier si le compte est protégé
+          if (
+            protectedAccounts.some((entry) => user.email.includes(entry)) ||
+            protectedAccounts.some((protectedName) =>
+              removeAccents(user.name.toLowerCase()).includes(
+                protectedName.toLowerCase()
+              )
+            )
+          ) {
+            protectedUsers.push({
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+            });
+            continue;
+          }
 
           // Désactiver l'utilisateur (soft delete)
           await tx.user.update({
@@ -477,28 +507,47 @@ const usersController = {
         }
       });
 
-      if (deactivatedUsers.length === 0) {
+      if (deactivatedUsers.length === 0 && protectedUsers.length === 0) {
         return res.status(404).json({
           message:
             "Aucun utilisateur actif trouvé avec les identifiants fournis.",
         });
       }
 
-      const userCount = deactivatedUsers.length;
+      let responseMessage = "";
 
-      const userNames = deactivatedUsers
-        .map((u) => `${u.name} (${u.role})`)
-        .join(", ");
+      if (deactivatedUsers.length > 0) {
+        const userCount = deactivatedUsers.length;
+        const userNames = deactivatedUsers
+          .map((u) => `${u.name} (${u.role})`)
+          .join(", ");
 
-      let message = `${userCount} utilisateur${
-        userCount > 1 ? "s" : ""
-      } désactivé${userCount > 1 ? "s" : ""}: ${userNames}`;
+        responseMessage += `${userCount} utilisateur${
+          userCount > 1 ? "s" : ""
+        } désactivé${userCount > 1 ? "s" : ""}: ${userNames}`;
+      }
 
-      console.log("Soft delete effectué:", message);
+      if (protectedUsers.length > 0) {
+        if (responseMessage) responseMessage += ". ";
+
+        const protectedCount = protectedUsers.length;
+        const protectedNames = protectedUsers
+          .map((u) => `${u.name} (${u.email})`)
+          .join(", ");
+
+        responseMessage += `${protectedCount} utilisateur${
+          protectedCount > 1 ? "s" : ""
+        } protégé${protectedCount > 1 ? "s" : ""} non désactivé${
+          protectedCount > 1 ? "s" : ""
+        }: ${protectedNames}`;
+      }
+
+      console.log("Résultat de la désactivation:", responseMessage);
 
       return res.status(200).json({
-        message,
+        message: responseMessage,
         deactivatedUsers,
+        protectedUsers: protectedUsers.length > 0 ? protectedUsers : undefined,
       });
     } catch (error) {
       next(error);
@@ -508,7 +557,7 @@ const usersController = {
         });
       }
       return res.status(500).json({
-        message: "Erreur serveur.",
+        message: error.message || "Erreur serveur.",
         details:
           process.env.NODE_ENV === "development" ? error.message : undefined,
       });
@@ -517,15 +566,7 @@ const usersController = {
 
   // Supprimer définitivement un utilisateur (Et toutes les data lui rattaché)
   deleteUser: async (req, res, next) => {
-    const { userId, ...extraFields } = req.body;
-
-    // Validation des données
-    if (Object.keys(extraFields).length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Seul 'userId' est autorisé.",
-      });
-    }
+    const { userId } = req.params;
 
     if (!userId || typeof userId !== "string") {
       return res.status(400).json({
@@ -540,15 +581,27 @@ const usersController = {
         // 1. Vérifier que l'utilisateur existe et n'est pas un ADMIN
         const user = await tx.user.findUnique({
           where: { id: userId },
-          select: { id: true, role: true, posts: { select: { id: true } } },
+          select: {
+            id: true,
+            role: true,
+            email: true,
+            posts: { select: { id: true } },
+          },
         });
 
         if (!user) {
           throw new Error("Utilisateur non trouvé");
         }
 
-        if (user.role === "ADMIN") {
-          throw new Error("Impossible de supprimer un administrateur");
+        if (
+          protectedAccounts.some((entry) => user.email.includes(entry)) ||
+          protectedAccounts.some((protectedName) =>
+            removeAccents(user.name.toLowerCase()).includes(
+              protectedName.toLowerCase()
+            )
+          )
+        ) {
+          throw new Error("Utilisateur protégé!!! Impossible de le supprimer");
         }
 
         // 2. Supprimer les tokens révoqués associés
@@ -588,7 +641,7 @@ const usersController = {
       return res.json({
         success: true,
         message:
-          "Utilisateur et toutes ses données associées ont été supprimés définitivement",
+          "L'Utilisateur et toutes ses données associées ont été supprimés définitivement",
       });
     } catch (error) {
       next(error);
@@ -611,7 +664,8 @@ const usersController = {
       // Erreur serveur générique
       return res.status(500).json({
         success: false,
-        message: "Erreur lors de la suppression de l'utilisateur",
+        message:
+          error.message || "Erreur lors de la suppression de l'utilisateur",
         details:
           process.env.NODE_ENV === "development" ? error.message : undefined,
       });
