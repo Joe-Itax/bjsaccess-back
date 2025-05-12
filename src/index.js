@@ -33,8 +33,9 @@ const allowedOrigins = [
   `http://localhost:${PORT}`,
   `http://localhost:3000`,
   `http://localhost:3001`,
-  `https://bjsaccess.vercel.app/`,
-  `https://bjsaccess-backoffice.vercel.app/`,
+  `https://bjsaccess.com`,
+  `https://bjsaccess.vercel.app`,
+  `https://bjsaccess-backoffice.vercel.app`,
 ];
 const corsOptions = {
   origin: function (origin, callback) {
