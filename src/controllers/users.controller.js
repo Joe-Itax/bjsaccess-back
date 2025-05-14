@@ -5,6 +5,7 @@ const emailValid = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const passwordValid = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
 const validRoles = ["AUTHOR", "ADMIN"];
 const protectedAccounts = process.env.PROTECTED_ACCOUNTS.split(",");
+const baseUrlPostFeaturedImage = process.env.BASE_URL || "";
 
 const usersController = {
   // Ajouter un nouvel utilisateur
@@ -222,6 +223,7 @@ const usersController = {
 
       const formattedPosts = user.posts.map((post) => ({
         ...post,
+        featuredImage: baseUrlPostFeaturedImage + post.featuredImage,
         tags: post.tags.map((tagObj) => tagObj.tag),
         author: {
           id: user.id,

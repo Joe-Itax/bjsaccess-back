@@ -137,6 +137,13 @@ const authController = {
       // Trouver l'utilisateur avec ce refresh token
       const user = await prisma.user.findUnique({
         where: { id: decoded.id },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          name: true,
+          refreshToken: true,
+        },
       });
 
       if (!user || user.refreshToken !== refreshToken) {
