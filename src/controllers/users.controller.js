@@ -159,6 +159,7 @@ const usersController = {
   // Lire un utilisateur par ID
   getUserById: async (req, res, next) => {
     const { userId } = req.params;
+
     try {
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -173,7 +174,43 @@ const usersController = {
               posts: true,
             },
           },
-          posts: true,
+          posts: {
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              content: true,
+              published: true,
+              featuredImage: true,
+              createdAt: true,
+              updatedAt: true,
+              author: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+              category: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+              tags: {
+                select: {
+                  tag: {
+                    select: {
+                      id: true,
+                      name: true,
+                      slug: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
           createdAt: true,
           updatedAt: true,
         },
@@ -183,10 +220,26 @@ const usersController = {
         return res.status(404).json({ message: "Utilisateur non trouvé." });
       }
 
+      const formattedPosts = user.posts.map((post) => ({
+        ...post,
+        tags: post.tags.map((tagObj) => tagObj.tag),
+        author: {
+          id: user.id,
+          name: user.name,
+          profileImage: user.profileImage,
+        },
+      }));
+
       user.postsCount = user._count.posts;
       delete user._count;
 
-      return res.status(200).json({ user });
+      return res.status(200).json({
+        user: {
+          ...user,
+          postsCount: user.postsCount,
+          posts: formattedPosts,
+        },
+      });
     } catch (error) {
       next(error);
       return res.status(500).json({

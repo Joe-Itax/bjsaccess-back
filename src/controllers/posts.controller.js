@@ -1,6 +1,10 @@
-const { prisma } = require("../lib/prisma");
+const fs = require("fs");
+const path = require("path");
 const slugify = require("slugify");
+const { prisma } = require("../lib/prisma");
 const { removeAccents, paginationQuery } = require("../utils/index");
+
+const baseUrl = process.env.BASE_URL || "";
 
 // Fonction utilitaire pour générer un slug unique
 async function generateUniqueSlug(title, model) {
@@ -27,7 +31,6 @@ const postsController = {
       categoryId,
       authorId,
       tags = [],
-      featuredImage,
       ...extraFields
     } = req.body;
 
@@ -46,6 +49,27 @@ const postsController = {
       });
     }
 
+    const tagIds = Array.isArray(req.body.tags)
+      ? req.body.tags
+      : req.body.tags
+      ? [req.body.tags]
+      : [];
+
+    const featuredImagePath = req.file
+      ? `/uploads/featured/${req.file.filename}`
+      : null;
+
+    const imagePath = req.file
+      ? path.join(
+          __dirname,
+          "..",
+          "..",
+          "uploads",
+          "featured",
+          req.file.filename
+        )
+      : null;
+
     try {
       const post = await prisma.$transaction(async (tx) => {
         // Vérifier que la catégorie existe
@@ -56,9 +80,9 @@ const postsController = {
 
         // Vérifier les tags existants
         const existingTags = await tx.tag.findMany({
-          where: { id: { in: tags } },
+          where: { id: { in: tagIds } },
         });
-        if (existingTags.length !== tags.length) {
+        if (existingTags.length !== tagIds.length) {
           throw new Error("Un ou plusieurs tags sont invalides");
         }
 
@@ -72,11 +96,11 @@ const postsController = {
             searchableName,
             slug,
             content,
-            featuredImage,
+            featuredImage: featuredImagePath,
             authorId: req?.user?.id || authorId,
             categoryId,
             tags: {
-              create: tags.map((tagId) => ({ tagId })),
+              create: tagIds.map((tagId) => ({ tagId })),
             },
           },
           include: {
@@ -93,15 +117,29 @@ const postsController = {
         });
       });
 
+      // post.featuredImage = baseUrl + post.featuredImage;
+
       res.status(201).json({
         message: "Post créer avec succès",
         post,
       });
     } catch (error) {
+      if (imagePath) {
+        try {
+          await fs.promises.unlink(imagePath);
+          console.log("Image supprimée :", imagePath);
+        } catch (unlinkError) {
+          console.error(
+            "Erreur lors de la suppression de l'image :",
+            unlinkError
+          );
+        }
+      }
+
       next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur",
-      });
+      // return res.status(500).json({
+      //   message: error.message || "Erreur serveur",
+      // });
     }
   },
 
@@ -122,6 +160,7 @@ const postsController = {
         id: true,
         title: true,
         slug: true,
+        content: true,
         featuredImage: true,
         createdAt: true,
         category: {
@@ -137,6 +176,18 @@ const postsController = {
             name: true,
             profileImage: true,
           },
+        },
+        comments: {
+          select: {
+            id: true,
+            content: true,
+            visitorName: true,
+            visitorEmail: isBackOffice,
+            postId: true,
+            isApproved: isBackOffice,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
         },
       };
 
@@ -161,14 +212,19 @@ const postsController = {
         });
       }
 
+      result.data.map((post) => {
+        post.featuredImage = baseUrl + post.featuredImage;
+        return post;
+      });
+
       res.json({
         ...result,
       });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur",
-      });
+      // return res.status(500).json({
+      //   message: error.message || "Erreur serveur",
+      // });
     }
   },
 
@@ -217,15 +273,20 @@ const postsController = {
         });
       }
 
+      result.data.map((post) => {
+        post.featuredImage = baseUrl + post.featuredImage;
+        return post;
+      });
+
       res.json({
         searchTerm,
         ...result,
       });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur",
-      });
+      // return res.status(500).json({
+      //   message: error.message || "Erreur serveur",
+      // });
     }
   },
 
@@ -275,15 +336,20 @@ const postsController = {
         });
       }
 
+      result.data.map((post) => {
+        post.featuredImage = baseUrl + post.featuredImage;
+        return post;
+      });
+
       res.json({
         category: category.name,
         ...result,
       });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur",
-      });
+      // return res.status(500).json({
+      //   message: error.message || "Erreur serveur",
+      // });
     }
   },
 
@@ -339,9 +405,9 @@ const postsController = {
       });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur",
-      });
+      // return res.status(500).json({
+      //   message: error.message || "Erreur serveur",
+      // });
     }
   },
 
@@ -360,11 +426,11 @@ const postsController = {
           title: true,
           slug: true,
           content: true,
-          published: isBackOffice, // Inclure 'published' seulement pour le back-office
+          published: isBackOffice,
           featuredImage: true,
           createdAt: true,
-          updatedAt: isBackOffice, // Inclure 'updatedAt' seulement pour le back-office
-          authorId: isBackOffice, // Inclure 'authorId' seulement pour le back-office
+          updatedAt: isBackOffice,
+          authorId: isBackOffice,
           category: {
             select: {
               id: true,
@@ -391,12 +457,14 @@ const postsController = {
             },
           },
           comments: {
-            where: { isApproved: true },
             select: {
               id: true,
-              content: true,
-              createdAt: true,
               visitorName: true,
+              visitorEmail: isBackOffice,
+              content: true,
+              isApproved: isBackOffice,
+              postId: true,
+              createdAt: true,
             },
             orderBy: { createdAt: "desc" },
           },
@@ -422,31 +490,31 @@ const postsController = {
         tags: post.tags.map((tagObj) => tagObj.tag),
       };
 
+      formattedPost.featuredImage = baseUrl + formattedPost.featuredImage;
+
       res.json({
         post: formattedPost,
       });
     } catch (error) {
       next(error);
-      res.status(500).json({
-        message: "Erreur lors de la récupération du post",
-        error:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
+      // res.status(500).json({
+      //   message: "Erreur lors de la récupération du post",
+      //   error:
+      //     process.env.NODE_ENV === "development" ? error.message : undefined,
+      // });
     }
   },
 
   // Mettre à jour un article
   updatePost: async (req, res, next) => {
     const { id } = req.params;
-    const {
-      title,
-      content,
-      categoryId,
-      tags,
-      featuredImage,
-      published,
-      ...extraFields
-    } = req.body;
+    req.body.tagIds = Array.isArray(req.body.tagIds)
+      ? req.body.tagIds
+      : req.body.tagIds
+      ? [req.body.tagIds]
+      : [];
+    const { title, content, categoryId, tagIds, published, ...extraFields } =
+      req.body;
 
     // Rejet des champs supplémentaires
     if (Object.keys(extraFields).length > 0) {
@@ -457,6 +525,8 @@ const postsController = {
     }
 
     try {
+      let featuredImage;
+      let oldImagePath;
       const updatedPost = await prisma.$transaction(async (tx) => {
         // Vérifier que le post existe et appartient à l'utilisateur (ou admin)
         const existingPost = await tx.post.findUnique({
@@ -481,18 +551,13 @@ const postsController = {
         }
 
         // Vérifier les tags si fournis
-        if (tags) {
+        if (tagIds.length > 0) {
           const existingTags = await tx.tag.findMany({
-            where: { id: { in: tags } },
+            where: { id: { in: tagIds } },
           });
-          if (existingTags.length !== tags.length) {
+          if (existingTags.length !== tagIds.length) {
             throw new Error("Un ou plusieurs tags sont invalides");
           }
-        }
-
-        // Mettre à jour les tags si nécessaire
-        if (tags) {
-          await tx.tagsOnPosts.deleteMany({ where: { postId: id } });
         }
 
         // Générer un nouveau slug si le titre change
@@ -503,6 +568,17 @@ const postsController = {
           searchableName = removeAccents(title);
         }
 
+        // Mettre à jour l'image si elle a changé
+
+        if (req.file) {
+          oldImagePath = existingPost.featuredImage
+            ? path.join(__dirname, "..", "..", existingPost.featuredImage)
+            : null;
+
+          // Nouvelle image
+          featuredImage = `/uploads/featured/${req.file.filename}`;
+        }
+
         return await tx.post.update({
           where: { id },
           data: {
@@ -510,12 +586,12 @@ const postsController = {
             slug,
             content,
             categoryId,
-            featuredImage,
+            featuredImage: featuredImage || existingPost.featuredImage,
             published,
             searchableName: title ? searchableName : "",
-            ...(tags && {
+            ...(tagIds && {
               tags: {
-                create: tags.map((tagId) => ({ tagId })),
+                create: tagIds.map((tagId) => ({ tagId })),
               },
             }),
           },
@@ -534,14 +610,27 @@ const postsController = {
         });
       });
 
+      if (oldImagePath && fs.existsSync(oldImagePath)) {
+        fs.unlinkSync(oldImagePath);
+      }
+      updatedPost.featuredImage = baseUrl + updatedPost.featuredImage;
+
       res.json({
         post: updatedPost,
       });
     } catch (error) {
+      if (req.file) {
+        const imagePath = req.file
+          ? path.join(__dirname, "..", "..", req.file.path)
+          : null;
+        if (fs.existsSync(imagePath)) {
+          fs.unlinkSync(imagePath);
+        }
+      }
       next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur",
-      });
+      // return res.status(500).json({
+      //   message: error.message || "Erreur serveur",
+      // });
     }
   },
 
@@ -562,7 +651,19 @@ const postsController = {
           throw new Error("Non autorisé à supprimer cet article");
         }
 
-        // Supprimer les relations tags d'abord
+        // Supprimer le featured image si elle existe
+        const featuredPath = post.featuredImage
+          ? path.join(__dirname, "..", "..", post.featuredImage)
+          : null;
+
+        if (featuredPath && fs.existsSync(featuredPath)) {
+          fs.unlinkSync(featuredPath);
+        }
+
+        // Supprimer les commentaires
+        await tx.comment.deleteMany({ where: { postId: id } });
+
+        // Supprimer les relations tags
         await tx.tagsOnPosts.deleteMany({ where: { postId: id } });
 
         // Puis supprimer le post
@@ -574,9 +675,9 @@ const postsController = {
       });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur",
-      });
+      // return res.status(500).json({
+      //   message: error.message || "Erreur serveur",
+      // });
     }
   },
 
@@ -998,13 +1099,13 @@ const postsController = {
       });
     } catch (error) {
       next(error);
-      res.status(500).json({
-        message: "Erreur lors de la récupération des statistiques",
-        error:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
+      // res.status(500).json({
+      //   message: "Erreur lors de la récupération des statistiques",
+      //   error:
+      //     process.env.NODE_ENV === "development" ? error.message : undefined,
+      // });
     }
   },
 };
 
-module.exports = postsController;
+module.exports = { postsController, generateUniqueSlug };

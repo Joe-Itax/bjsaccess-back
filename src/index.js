@@ -5,11 +5,13 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const passport = require("passport");
+const path = require("path");
 
 const {
   prismaErrorHandler,
   corsLogger,
   security,
+  errorHandler,
 } = require("./middlewares/index.middleware");
 const {
   authBaseURI,
@@ -76,6 +78,11 @@ require("./config/passport-strategies/jwt");
 require("./job/cleanup-revoked-tokens");
 
 /**
+ * -------------- STATIC FILE ----------------
+ */
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
+/**
  * -------------- ROUTES ----------------
  */
 
@@ -86,6 +93,8 @@ app.get("/", (req, res) => {
 app.use(authBaseURI, authRouter);
 app.use(postsBaseURI, postsRouter);
 app.use(usersBaseURI, usersRouter);
+
+app.use(errorHandler);
 
 /**
  * Middleware d’erreur Prisma

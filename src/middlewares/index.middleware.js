@@ -7,4 +7,7 @@ module.exports = {
   prismaErrorHandler: require("./prisma-error-handler.middleware"),
   role: require("./role.middleware"),
   security: require("./security.middleware"),
+  uploadFeaturedImage: require("./upload"),
+  optionnalAuth: require("./optional-auth.middleware"),
+  errorHandler: require("./error-handler-middleware"),
 };

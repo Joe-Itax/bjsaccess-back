@@ -1,10 +1,12 @@
 // module.exports = postsRouter;
 const { Router } = require("express");
 const postsRouter = Router();
-const postsController = require("../controllers/posts.controller");
+const { postsController } = require("../controllers/posts.controller");
 const {
   authenticate,
   attachTokenRefreshToResponse,
+  uploadFeaturedImage,
+  optionnalAuth,
 } = require("../middlewares/index.middleware");
 const { check } = require("express-validator");
 
@@ -22,7 +24,7 @@ const postValidation = [
 // Articles
 postsRouter.get("/", postsController.getAllPosts);
 postsRouter.get("/search", postsController.searchPost);
-postsRouter.get("/:id", postsController.getPostById);
+postsRouter.get("/:id", optionnalAuth, postsController.getPostById);
 postsRouter.get("/category/:slug", postsController.getPostsByCategory);
 postsRouter.get("/tag/:slug", postsController.getPostsByTag);
 
@@ -44,9 +46,10 @@ postsRouter.get("/:postId/comments", postsController.getPostComments);
 
 // Articles
 postsRouter.post(
-  "/admin/posts",
+  "/admin",
   authenticate(),
   attachTokenRefreshToResponse,
+  uploadFeaturedImage,
   postValidation,
   postsController.createPost
 );
@@ -54,7 +57,7 @@ postsRouter.put(
   "/admin/:id",
   authenticate(),
   attachTokenRefreshToResponse,
-  postValidation,
+  uploadFeaturedImage,
   postsController.updatePost
 );
 postsRouter.delete(
