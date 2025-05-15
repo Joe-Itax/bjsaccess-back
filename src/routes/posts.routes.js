@@ -92,6 +92,12 @@ postsRouter.post(
   [check("name").notEmpty().withMessage("Le nom est requis")],
   postsController.createCategory
 );
+postsRouter.delete(
+  "/admin/categories/:categoryId",
+  authenticate(),
+  attachTokenRefreshToResponse,
+  postsController.deleteCategory
+);
 
 // ========================
 // === GESTION DES TAGS ===
@@ -103,6 +109,12 @@ postsRouter.post(
   attachTokenRefreshToResponse,
   [check("name").notEmpty().withMessage("Le nom est requis")],
   postsController.createTag
+);
+postsRouter.delete(
+  "/admin/tags/:tagId",
+  authenticate(),
+  attachTokenRefreshToResponse,
+  postsController.deleteTag
 );
 
 // ========================

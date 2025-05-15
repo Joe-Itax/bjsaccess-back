@@ -770,7 +770,9 @@ const postsController = {
   getAllCategories: async (req, res, next) => {
     const { page, limit } = req.query;
     try {
-      const categories = await paginationQuery(prisma.category, page, limit);
+      const categories = await paginationQuery(prisma.category, page, limit, {
+        orderBy: { createdAt: "asc" },
+      });
 
       res.json({
         categories,
@@ -810,6 +812,51 @@ const postsController = {
     }
   },
 
+  //supprimer une categorie
+  deleteCategory: async (req, res, next) => {
+    const { categoryId } = req.params;
+
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Vérifier l'existence de la catégorie
+        const category = await tx.category.findUnique({
+          where: { id: categoryId },
+          select: { id: true, name: true, _count: { select: { posts: true } } },
+        });
+
+        if (!category)
+          return { success: false, message: "Catégorie non trouvée" };
+
+        // 2. Gérer les posts associés
+        if (category._count.posts > 0) {
+          const defaultCategoryId = await ensureDefaultCategoryExists(tx);
+          await tx.post.updateMany({
+            where: { categoryId },
+            data: { categoryId: defaultCategoryId },
+          });
+        }
+
+        // 3. Suppression
+        await tx.category.delete({ where: { id: categoryId } });
+
+        return {
+          success: true,
+          message: `Catégorie "${category.name}" supprimée - ${category._count.posts} posts réassignés`,
+        };
+      });
+
+      return res.status(result.success ? 200 : 404).json(result);
+    } catch (error) {
+      if (error.code === "P2025") {
+        return res.status(404).json({
+          success: false,
+          message: "La catégorie n'existe plus",
+        });
+      }
+      next(error);
+    }
+  },
+
   /* ====================== */
   /* === GESTION DES TAGS === */
   /* ====================== */
@@ -818,7 +865,9 @@ const postsController = {
   getAllTags: async (req, res, next) => {
     const { page, limit } = req.query;
     try {
-      const tags = await paginationQuery(prisma.tag, page, limit);
+      const tags = await paginationQuery(prisma.tag, page, limit, {
+        orderBy: { createdAt: "asc" },
+      });
 
       res.json({
         tags,
@@ -853,6 +902,31 @@ const postsController = {
           message: "Un tag avec ce nom existe déjà",
         });
       }
+      next(error);
+    }
+  },
+
+  //supprimer un tag
+  deleteTag: async (req, res, next) => {
+    const { tagId } = req.params;
+    try {
+      await prisma.$transaction(async (tx) => {
+        // 1. Vérifier que le tag existe
+        const tag = await tx.tag.findUnique({
+          where: { id: tagId },
+        });
+
+        if (!tag) {
+          throw new Error("Catégorie non trouvée");
+        }
+
+        // 2. Supprimer le tag
+        await tx.tag.delete({ where: { id: tagId } });
+      });
+      return res.status(200).json({
+        message: "Tag supprimée avec succès",
+      });
+    } catch (error) {
       next(error);
     }
   },
@@ -1107,5 +1181,23 @@ const postsController = {
     }
   },
 };
+
+async function ensureDefaultCategoryExists(tx) {
+  let defaultCategory = await tx.category.findFirst({
+    where: { name: "Non classé" },
+  });
+
+  if (!defaultCategory) {
+    defaultCategory = await tx.category.create({
+      data: {
+        name: "Non classé",
+        slug: "non-classe",
+        description: "Articles non classés",
+      },
+    });
+  }
+
+  return defaultCategory.id;
+}
 
 module.exports = { postsController, generateUniqueSlug };

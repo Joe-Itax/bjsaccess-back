@@ -104,9 +104,9 @@ const authController = {
       });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur lors de la connexion.",
-      });
+      // return res.status(500).json({
+      //   message: error.message || "Erreur serveur lors de la connexion.",
+      // });
     }
   },
 
@@ -197,9 +197,9 @@ const authController = {
       res.json({ message: "Déconnexion réussie" });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: error.message || "Erreur serveur lors de la deconnexion.",
-      });
+      // return res.status(500).json({
+      //   message: error.message || "Erreur serveur lors de la deconnexion.",
+      // });
     }
   },
 
@@ -225,10 +225,10 @@ const authController = {
       res.json({ user });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message:
-          "Erreur serveur lors de la vérification de l'état de l'utilisateur.",
-      });
+      // return res.status(500).json({
+      //   message:
+      //     "Erreur serveur lors de la vérification de l'état de l'utilisateur.",
+      // });
     }
   },
 };

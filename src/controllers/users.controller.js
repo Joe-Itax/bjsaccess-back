@@ -108,11 +108,11 @@ const usersController = {
       });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message:
-          error.message ||
-          "Erreur serveur lors de la création de l'utilisateur.",
-      });
+      // return res.status(500).json({
+      //   message:
+      //     error.message ||
+      //     "Erreur serveur lors de la création de l'utilisateur.",
+      // });
     }
   },
 
@@ -149,11 +149,11 @@ const usersController = {
         .json({ message: "Liste des utilisateurs", ...result });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: "Erreur serveur.",
-        details:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
+      // return res.status(500).json({
+      //   message: "Erreur serveur.",
+      //   details:
+      //     process.env.NODE_ENV === "development" ? error.message : undefined,
+      // });
     }
   },
 
@@ -244,11 +244,11 @@ const usersController = {
       });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: "Erreur serveur.",
-        details:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
+      // return res.status(500).json({
+      //   message: "Erreur serveur.",
+      //   details:
+      //     process.env.NODE_ENV === "development" ? error.message : undefined,
+      // });
     }
   },
 
@@ -310,11 +310,11 @@ const usersController = {
       });
     } catch (error) {
       next(error);
-      return res.status(500).json({
-        message: "Erreur lors de la recherche.",
-        details:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
+      // return res.status(500).json({
+      //   message: "Erreur lors de la recherche.",
+      //   details:
+      //     process.env.NODE_ENV === "development" ? error.message : undefined,
+      // });
     }
   },
 
@@ -455,7 +455,6 @@ const usersController = {
         user: updatedUser,
       });
     } catch (error) {
-      next(error);
       if (error.code === "P2002" && error.meta?.target?.includes("email")) {
         return res.status(400).json({
           message: "Cet email est déjà utilisé par un autre utilisateur.",
@@ -468,11 +467,13 @@ const usersController = {
         });
       }
 
-      return res.status(500).json({
-        message:
-          error.message ||
-          "Erreur serveur lors de la mise à jour de l'utilisateur.",
-      });
+      next(error);
+
+      // return res.status(500).json({
+      //   message:
+      //     error.message ||
+      //     "Erreur serveur lors de la mise à jour de l'utilisateur.",
+      // });
     }
   },
 
@@ -605,17 +606,18 @@ const usersController = {
         protectedUsers: protectedUsers.length > 0 ? protectedUsers : undefined,
       });
     } catch (error) {
-      next(error);
       if (error.message === "Utilisateur non trouvé.") {
         return res.status(404).json({
           message: error.message || "Erreur.",
         });
       }
-      return res.status(500).json({
-        message: error.message || "Erreur serveur.",
-        details:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
+      next(error);
+
+      // return res.status(500).json({
+      //   message: error.message || "Erreur serveur.",
+      //   details:
+      //     process.env.NODE_ENV === "development" ? error.message : undefined,
+      // });
     }
   },
 
@@ -699,8 +701,6 @@ const usersController = {
           "L'Utilisateur et toutes ses données associées ont été supprimés définitivement",
       });
     } catch (error) {
-      next(error);
-
       // Gestion des erreurs spécifiques
       if (error.message === "Utilisateur non trouvé") {
         return res.status(404).json({
@@ -716,14 +716,14 @@ const usersController = {
         });
       }
 
-      // Erreur serveur générique
-      return res.status(500).json({
-        success: false,
-        message:
-          error.message || "Erreur lors de la suppression de l'utilisateur",
-        details:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
+      next(error);
+
+      // return res.status(500).json({
+      //   message:
+      //     error.message || "Erreur lors de la suppression de l'utilisateur",
+      //   details:
+      //     process.env.NODE_ENV === "development" ? error.message : undefined,
+      // });
     }
   },
 };
